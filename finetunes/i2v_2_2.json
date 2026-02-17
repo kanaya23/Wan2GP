@@ -1,0 +1,15 @@
+{
+    "model": {
+        "URLs": [
+            "https://huggingface.co/DeepBeepMeep/Wan2.2/resolve/main/wan2.2_image2video_14B_high_mbf16.safetensors"
+        ],
+        "URLs2": [
+            "https://huggingface.co/DeepBeepMeep/Wan2.2/resolve/main/wan2.2_image2video_14B_low_mbf16.safetensors"
+        ],
+        "text_encoder_folder": "umt5-xxl",
+        "text_encoder_URLs": [
+            "https://huggingface.co/DeepBeepMeep/Wan2.1/resolve/main/umt5-xxl/models_t5_umt5-xxl-enc-bf16.safetensors"
+        ],
+        "auto_quantize": false
+    }
+}

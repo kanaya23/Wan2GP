@@ -99,10 +99,10 @@ python wgp.py --process queue.zip --output-dir ./out --attention sage2
 
 ### Model Configuration
 ```bash
---quantize-transformer BOOL   # Enable/disable transformer quantization (default: True)
---compile                     # Enable PyTorch compilation (requires Triton)
---attention MODE              # Force attention mode: sdpa, flash, sage, sage2
---profile NUMBER              # Performance profile 1-5 (default: 4)
+--quantize-transformer BOOL   # Enable/disable transformer quantization (default: False)
+--compile                     # Ignored in native mode (compilation disabled)
+--attention MODE              # Native mode enforces sdpa (other values are ignored)
+--profile NUMBER              # Native mode enforces profile 1 (high VRAM)
 --preload NUMBER              # Preload N MB of diffusion model in VRAM
 --fp16                        # Force fp16 instead of bf16 models
 --gpu DEVICE                  # Run on specific GPU device (e.g., "cuda:1")
@@ -112,7 +112,7 @@ python wgp.py --process queue.zip --output-dir ./out --attention sage2
 - **Profile 1**: Load entire current model in VRAM and keep all unused models in reserved RAM for fast VRAM tranfers 
 - **Profile 2**: Load model parts as needed, keep all unused models in reserved RAM for fast VRAM tranfers
 - **Profile 3**: Load entire current model in VRAM (requires 24GB for 14B model)
-- **Profile 4**: Default and recommended, load model parts as needed, most flexible option
+- **Profile 4**: Balanced low-VRAM option, load model parts as needed
 - **Profile 4+** (4.5): Profile 4 variation, can save up to 1 GB of VRAM, but will be slighlty slower on some configs
 - **Profile 5**: Minimum RAM usage
 

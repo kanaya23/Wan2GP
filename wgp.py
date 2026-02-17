@@ -22,7 +22,7 @@ import threading
 import argparse
 import warnings
 warnings.filterwarnings('ignore', message='Failed to find.*', module='triton')
-from mmgp import offload, safetensors2, profile_type , quant_router
+from mmgp import offload, safetensors2, quant_router
 try:
     import triton
 except ImportError:
@@ -788,7 +788,7 @@ def validate_settings(state, model_type, single_prompt, inputs):
     else:
         model_switch_phase = 1
         
-    if not any_steps_skipping: skip_steps_cache_type = ""
+    skip_steps_cache_type = ""
     if not model_def.get("lock_inference_steps", False) and model_type in ["ltxv_13B"] and num_inference_steps < 20:
         gr.Info("The minimum number of steps should be 20") 
         return ret()
@@ -2324,10 +2324,10 @@ for src,tgt in zip(src_move,tgt_move):
 
 if not Path(config_load_filename).is_file():
     server_config = {
-        "attention_mode" : "auto",  
+        "attention_mode" : "sdpa",  
         "transformer_types": [], 
-        "transformer_quantization": "int8",
-        "text_encoder_quantization" : "int8",
+        "transformer_quantization": "bf16",
+        "text_encoder_quantization" : "bf16",
         "lm_decoder_engine": "",
         "save_path": "outputs",  
         "image_save_path": "outputs",  
@@ -2339,9 +2339,9 @@ if not Path(config_load_filename).is_file():
         "enable_4k_resolutions": 0,
         "max_reserved_loras": -1,
         "vae_config": 0,
-        "profile" : profile_type.LowRAM_LowVRAM,
-        "video_profile": profile_type.LowRAM_LowVRAM,
-        "image_profile": profile_type.LowRAM_LowVRAM,
+        "profile" : 1,
+        "video_profile": 1,
+        "image_profile": 1,
         "audio_profile": 3.5,
         "preload_model_policy": [],
         "UI_theme": "default",
@@ -2414,8 +2414,8 @@ _normalize_mmaudio_config(server_config)
 
 def _normalize_profile_defaults(config):
     if "profile" not in config:
-        config["profile"] = profile_type.LowRAM_LowVRAM
-    base_profile = config.get("profile", profile_type.LowRAM_LowVRAM)
+        config["profile"] = 1
+    base_profile = config.get("profile", 1)
     config.setdefault("video_profile", base_profile)
     config.setdefault("image_profile", base_profile)
     config.setdefault("audio_profile", 3.5)
@@ -2430,6 +2430,13 @@ def _normalize_output_paths(config):
         config["audio_save_path"] = config["save_path"]
 
 _normalize_profile_defaults(server_config)
+server_config["attention_mode"] = "sdpa"
+server_config["transformer_quantization"] = "bf16"
+server_config["text_encoder_quantization"] = "bf16"
+server_config["compile"] = ""
+server_config["profile"] = 1
+server_config["video_profile"] = 1
+server_config["image_profile"] = 1
 _normalize_output_paths(server_config)
 lm_decoder_engine = server_config.get("lm_decoder_engine", "")
 
@@ -2933,21 +2940,18 @@ if transformer_type != None and not transformer_type in model_types and not tran
 if transformer_type == None:
     transformer_type = transformer_types[0] if len(transformer_types) > 0 else "t2v"
 
-transformer_quantization =server_config.get("transformer_quantization", "int8")
+transformer_quantization =server_config.get("transformer_quantization", "bf16")
 
 transformer_dtype_policy = server_config.get("transformer_dtype_policy", "")
 if args.fp16:
     transformer_dtype_policy = "fp16" 
 if args.bf16:
     transformer_dtype_policy = "bf16" 
-text_encoder_quantization =server_config.get("text_encoder_quantization", "int8")
-attention_mode = server_config["attention_mode"]
-if len(args.attention)> 0:
-    if args.attention in ["auto", "sdpa", "sage", "sage2", "flash", "xformers"]:
-        attention_mode = args.attention
-        lock_ui_attention = True
-    else:
-        raise Exception(f"Unknown attention mode '{args.attention}'")
+text_encoder_quantization =server_config.get("text_encoder_quantization", "bf16")
+attention_mode = "sdpa"
+if len(args.attention)> 0 and args.attention != "sdpa":
+    print(f"Ignoring attention mode '{args.attention}': native mode enforces sdpa")
+lock_ui_attention = True
 
 default_profile_video = force_profile_no if force_profile_no >= 0 else server_config["video_profile"]
 default_profile_image = force_profile_no if force_profile_no >= 0 else server_config["image_profile"]
@@ -3004,9 +3008,10 @@ only_allow_edit_in_advanced = False
 lora_preselected_preset = args.lora_preset
 lora_preset_model = transformer_type
 
-if  args.compile: #args.fastest or
-    compile="transformer"
-    lock_ui_compile = True
+if args.compile or len(compile) > 0:
+    print("PyTorch compilation is disabled in native mode")
+compile = ""
+lock_ui_compile = True
 
 
 def save_model(model, model_type, dtype,  config_file,  submodel_no = 1,  is_module = False, filter = None, no_fp16_main_model = True, module_source_no = 1):
@@ -3453,7 +3458,7 @@ def get_default_profile(output_type):
     return default_profile_video
 
 def compute_profile(override_profile, output_type="video"):
-    return override_profile if override_profile != -1 else get_default_profile(output_type)
+    return 1
 
 def get_output_type_for_model(model_type, image_mode=0):
     model_def = get_model_def(model_type)
@@ -3589,9 +3594,9 @@ def load_models(model_type, override_profile = -1, output_type="video", **model_
         print(f"Unable to create a finetune quantized model as some modules are declared in the finetune definition. If your finetune includes already the module weights you can remove the 'modules' entry and try again. If not you will need also to change temporarly the model 'architecture' to an architecture that wont require the modules part ({modules}) to quantize and then add back the original 'modules' and 'architecture' entries.")
         save_quantized = False
     quantizeTransformer = not save_quantized and model_def !=None and transformer_quantization in ("int8", "fp8") and model_def.get("auto_quantize", False) and not "quanto" in model_filename
-    if quantizeTransformer and len(modules) > 0:
-        print(f"Autoquantize is not yet supported if some modules are declared")
-        quantizeTransformer = False
+    if quantizeTransformer:
+        print("Autoquantize request ignored: native mode keeps full-precision weights")
+    quantizeTransformer = False
     model_family = get_model_family(model_type)
     transformer_dtype = get_transformer_dtype(model_type, transformer_dtype_policy)
     if quantizeTransformer or "quanto" in model_filename:
@@ -3655,6 +3660,15 @@ def load_models(model_type, override_profile = -1, output_type="video", **model_
             download_models(text_encoder_filename, file_model_type, 2, -1, force_path =text_encoder_folder)
             text_encoder_filename =  get_local_model_filename(text_encoder_filename, extra_paths=text_encoder_folder)
             print(f"Loading Text Encoder '{text_encoder_filename}' ...")
+
+    if base_model_type == "i2v_2_2":
+        resolved_model_files = [os.path.basename(path) for path in local_model_file_list]
+        if text_encoder_filename is not None:
+            resolved_model_files.append(os.path.basename(text_encoder_filename))
+        quantized_files = [name for name in resolved_model_files if "quanto" in name.lower() and "int8" in name.lower()]
+        if len(quantized_files) > 0:
+            raise Exception(f"Native mode requires BF16 non-quantized files for i2v_2_2, but got: {quantized_files}")
+        print(f"Native mode resolved files for {model_type}: {resolved_model_files}")
 
 
     profile = compute_profile(override_profile, output_type)
@@ -5861,13 +5875,9 @@ def generate_video(
     if args.test:
         send_cmd("info", "Test mode: model loaded, skipping generation.")
         return True
-    overridden_attention = override_attention if len(override_attention) else get_overridden_attention(model_type)
-    # if overridden_attention is not None and overridden_attention !=  attention_mode: print(f"Attention mode has been overriden to {overridden_attention} for model type '{model_type}'")
-    attn = overridden_attention if overridden_attention is not None else attention_mode
-    if attn == "auto":
-        attn = get_auto_attention()
-    elif not attn in attention_modes_supported:
-        send_cmd("info", f"You have selected attention mode '{attention_mode}'. However it is not installed or supported on your system. You should either install it or switch to the default 'sdpa' attention.")
+    attn = "sdpa"
+    if not attn in attention_modes_supported:
+        send_cmd("info", "Native mode enforces sdpa attention, but sdpa is not available on this system.")
         send_cmd("exit")
         return True
     

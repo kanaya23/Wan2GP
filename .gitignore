@@ -30,6 +30,8 @@ storage/
 samples/
 !.gitignore
 !requirements.txt
+!.github/
+!.github/copilot-instructions.md
 .DS_Store
 *DS_Store
 google/
