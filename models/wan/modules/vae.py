@@ -37,10 +37,11 @@ class CausalConv3d(nn.Conv3d):
         try:
             out = super().forward(x)
             return out
-        except RuntimeError as e:
-            if "miopenStatus" in str(e):
-                print("⚠️ MIOpen fallback: AMD gets upset when trying to work with large areas, and so CPU will be "
-                      "used for this decoding (which is very slow). Consider using tiled VAE Decoding.")
+        except (RuntimeError, NotImplementedError) as e:
+            err = str(e)
+            cuda_slow_conv = "slow_conv3d_forward" in err and "CUDA" in err
+            if "miopenStatus" in err or cuda_slow_conv:
+                print("⚠️ VAE conv3d fallback: backend kernel unavailable, using CPU fallback for this block (slow).")
                 x_cpu = x.float().cpu()
                 weight_cpu = self.weight.float().cpu()
                 bias_cpu = self.bias.float().cpu() if self.bias is not None else None
@@ -793,6 +794,11 @@ class WanVAE:
                  dtype=torch.float,
                  upsampler_factor = 1,
                  device="cuda"):
+        requested_dtype = dtype
+        force_vae_fp32 = str(os.environ.get("WAN_VAE_FORCE_FP32", "1")).strip().lower() in ("1", "true", "yes", "on")
+        if force_vae_fp32 and dtype != torch.float:
+            print(f"WAN VAE: forcing float32 for Conv3d stability (requested {requested_dtype})")
+            dtype = torch.float
         self.dtype = dtype
         self.device = device
         self.z_dim = z_dim
