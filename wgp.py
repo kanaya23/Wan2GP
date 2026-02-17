@@ -2276,6 +2276,13 @@ force_profile_no = float(args.profile)
 verbose_level = int(args.verbose)
 check_loras = args.check_loras ==1
 
+def _is_env_flag_enabled(env_key: str, default: str = "0") -> bool:
+    return str(os.environ.get(env_key, default)).strip().lower() in ("1", "true", "yes", "on")
+
+strict_local_models_only = _is_env_flag_enabled("WAN_STRICT_LOCAL_MODELS") or _is_env_flag_enabled("WAN_STRICT_OFFLINE")
+if strict_local_models_only:
+    print("WAN strict local mode enabled: missing model files will raise instead of downloading.")
+
 with open("models/_settings.json", "r", encoding="utf-8") as f:
     primary_settings = json.load(f)
 
@@ -2367,7 +2374,35 @@ else:
     server_config = json.loads(text)
 
 checkpoints_paths = server_config.get("checkpoints_paths", None)
-if checkpoints_paths is None: checkpoints_paths = server_config["checkpoints_paths"] = fl.default_checkpoints_paths
+if checkpoints_paths is None:
+    checkpoints_paths = server_config["checkpoints_paths"] = fl.default_checkpoints_paths
+if isinstance(checkpoints_paths, str):
+    checkpoints_paths = [checkpoints_paths]
+
+def _merge_paths_preserve_order(paths):
+    seen = set()
+    merged = []
+    for path in paths:
+        clean_path = str(path).strip()
+        if len(clean_path) == 0 or clean_path in seen:
+            continue
+        seen.add(clean_path)
+        merged.append(clean_path)
+    return merged
+
+auto_checkpoints_paths = []
+mounted_ckpts_path = os.environ.get("WAN_CKPTS_CACHE", "").strip()
+if len(mounted_ckpts_path) == 0 and os.path.isdir("/models/ckpts"):
+    mounted_ckpts_path = "/models/ckpts"
+if len(mounted_ckpts_path) > 0:
+    mounted_ckpts_path = os.path.abspath(mounted_ckpts_path)
+    mounted_subdir = os.environ.get("WAN_PREFETCH_SUBDIR", "wan22").strip() or "wan22"
+    auto_checkpoints_paths = [mounted_ckpts_path, os.path.join(mounted_ckpts_path, mounted_subdir)]
+
+checkpoints_paths = _merge_paths_preserve_order(auto_checkpoints_paths + checkpoints_paths)
+server_config["checkpoints_paths"] = checkpoints_paths
+if len(auto_checkpoints_paths) > 0:
+    print(f"Auto-merged mounted checkpoints paths: {auto_checkpoints_paths}")
 fl.set_checkpoints_paths(checkpoints_paths)
 three_levels_hierarchy = server_config.get("model_hierarchy_type", 1) == 1
 
@@ -3168,14 +3203,23 @@ def process_files_def(repoId = None, sourceFolderList = None, fileList = None, t
         targetRoot = os.path.join(original_targetRoot, targetFolder) if targetFolder is not None else original_targetRoot            
         if len(files)==0:
             if fl.locate_folder(sourceFolder if targetFolder is None else os.path.join(targetFolder, sourceFolder), error_if_none= False ) is None:
+                if strict_local_models_only:
+                    missing_folder = sourceFolder if targetFolder is None else os.path.join(targetFolder, sourceFolder)
+                    raise Exception(f"Strict local mode: required folder '{missing_folder}' is missing from checkpoints_paths={server_config.get('checkpoints_paths', fl.default_checkpoints_paths)}")
                 snapshot_download(repo_id=repoId,  allow_patterns=sourceFolder +"/*", local_dir= targetRoot)
         else:
             for onefile in files:     
                 if len(sourceFolder) > 0: 
                     if fl.locate_file( (sourceFolder + "/" + onefile)  if targetFolder is None else os.path.join(targetFolder, sourceFolder, onefile), error_if_none= False) is None:   
+                        if strict_local_models_only:
+                            missing_file = (sourceFolder + "/" + onefile) if targetFolder is None else os.path.join(targetFolder, sourceFolder, onefile)
+                            raise Exception(f"Strict local mode: required file '{missing_file}' is missing from checkpoints_paths={server_config.get('checkpoints_paths', fl.default_checkpoints_paths)}")
                         hf_hub_download(repo_id=repoId,  filename=onefile, local_dir = targetRoot, subfolder=sourceFolder)
                 else:
                     if fl.locate_file(onefile if targetFolder is None else os.path.join(targetFolder, onefile), error_if_none= False) is None:          
+                        if strict_local_models_only:
+                            missing_file = onefile if targetFolder is None else os.path.join(targetFolder, onefile)
+                            raise Exception(f"Strict local mode: required file '{missing_file}' is missing from checkpoints_paths={server_config.get('checkpoints_paths', fl.default_checkpoints_paths)}")
                         hf_hub_download(repo_id=repoId,  filename=onefile, local_dir = targetRoot)
 
 def download_mmaudio():
@@ -3192,6 +3236,8 @@ def download_mmaudio():
 
 
 def download_file(url,filename):
+    if strict_local_models_only:
+        raise Exception(f"Strict local mode: missing local file '{filename}'. Download from '{url}' was blocked.")
     if url.startswith("https://huggingface.co/") and "/resolve/main/" in url:
         base_dir = os.path.dirname(filename)
         url = url[len("https://huggingface.co/"):]
@@ -3218,6 +3264,7 @@ RIFE_V4_FILENAME = "rife4.26.pkl"
 RIFE_V3_FILENAME = "flownet.pkl"
 download_shared_done = False
 def download_models(model_filename = None, model_type= None, file_type = 0, submodel_no = 1, force_path = None):
+    global download_shared_done
     def computeList(filename):
         if filename == None:
             return []
@@ -3226,7 +3273,7 @@ def download_models(model_filename = None, model_type= None, file_type = 0, subm
         return [filename]        
 
 
-    if file_type == 0:
+    if file_type == 0 and not download_shared_done:
         shared_def = {
             "repoId" : "DeepBeepMeep/Wan2.1",
             "sourceFolderList" : [ "pose", "scribble", "flow", "depth", "mask", "wav2vec", "chinese-wav2vec2-base", "roformer", "pyannote", "det_align", "" ],
@@ -3257,7 +3304,6 @@ def download_models(model_filename = None, model_type= None, file_type = 0, subm
             process_files_def(**enhancer_def)
 
         download_mmaudio()
-        global download_shared_done
         download_shared_done = True
 
     if model_filename is None: return
@@ -3283,6 +3329,8 @@ def download_models(model_filename = None, model_type= None, file_type = 0, subm
                 if os.path.isfile(local_model_filename): os.remove(local_model_filename) 
                 raise Exception(f"'{url}' is invalid for Model '{model_type}' : {str(e)}'")
             if file_type!=0: return
+        elif len(model_filename) > 0:
+            print(f"Using local checkpoint file '{local_model_filename}'")
 
     for prop, recursive in zip(["preload_URLs", "VAE_URLs"], [True, False]):
         if recursive:
