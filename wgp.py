@@ -2282,6 +2282,9 @@ def _is_env_flag_enabled(env_key: str, default: str = "0") -> bool:
 strict_local_models_only = _is_env_flag_enabled("WAN_STRICT_LOCAL_MODELS") or _is_env_flag_enabled("WAN_STRICT_OFFLINE")
 if strict_local_models_only:
     print("WAN strict local mode enabled: missing model files will raise instead of downloading.")
+disable_mmgp_offload = not _is_env_flag_enabled("WAN_ENABLE_MMGP_OFFLOAD")
+if disable_mmgp_offload:
+    print("WAN native mode: mmgp offload profile disabled; models will stay resident on GPU.")
 
 with open("models/_settings.json", "r", encoding="utf-8") as f:
     primary_settings = json.load(f)
@@ -3550,6 +3553,23 @@ def init_pipe(pipe, kwargs, profile):
 
     return mmgp_profile
 
+class NativeOffloadProxy:
+    def unload_all(self):
+        return
+
+    def release(self):
+        return
+
+def move_pipe_modules_to_device(pipe, device):
+    moved_modules = []
+    for name, module in pipe.items():
+        if isinstance(module, torch.nn.Module):
+            module.to(device=device)
+            module.eval()
+            moved_modules.append(name)
+    if len(moved_modules) > 0:
+        print(f"Native mode kept modules on {device}: {moved_modules}")
+
 reset_prompt_enhancer_requested = False
 def reset_prompt_enhancer():
     global reset_prompt_enhancer_requested
@@ -3748,7 +3768,12 @@ def load_models(model_type, override_profile = -1, output_type="video", **model_
     if compile_modules == False:
         print("Pytorch compilation is not supported for this Model")
     # kwargs["pinnedMemory"] = "text_encoder"
-    offloadobj = offload.profile(pipe, profile_no= mmgp_profile, compile = compile_modules, quantizeTransformer = False, loras = loras_transformer, perc_reserved_mem_max = perc_reserved_mem_max , vram_safety_coefficient = vram_safety_coefficient , convertWeightsFloatTo = transformer_dtype, **kwargs)  
+    if disable_mmgp_offload:
+        move_pipe_modules_to_device(pipe, processing_device)
+        offloadobj = NativeOffloadProxy()
+        print("Native mode: skipped mmgp offload.profile for main model")
+    else:
+        offloadobj = offload.profile(pipe, profile_no= mmgp_profile, compile = compile_modules, quantizeTransformer = False, loras = loras_transformer, perc_reserved_mem_max = perc_reserved_mem_max , vram_safety_coefficient = vram_safety_coefficient , convertWeightsFloatTo = transformer_dtype, **kwargs)
     if len(args.gpu) > 0:
         torch.set_default_device(args.gpu)
     transformer_type = model_type
@@ -5564,7 +5589,12 @@ def enhance_prompt(state, prompt, prompt_enhancer, multi_images_gen_type, multi_
         profile = compute_profile(override_profile, "video")
         mmgp_profile = init_pipe(pipe, kwargs, profile)
         setup_prompt_enhancer(pipe, kwargs)
-        enhancer_offloadobj = offload.profile(pipe, profile_no=  mmgp_profile, **kwargs)  
+        if disable_mmgp_offload:
+            move_pipe_modules_to_device(pipe, processing_device)
+            enhancer_offloadobj = NativeOffloadProxy()
+            print("Native mode: skipped mmgp offload.profile for prompt enhancer")
+        else:
+            enhancer_offloadobj = offload.profile(pipe, profile_no=  mmgp_profile, **kwargs)
 
     original_image_refs = inputs["image_refs"]
     if original_image_refs is not None:
