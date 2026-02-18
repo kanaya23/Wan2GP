@@ -3030,9 +3030,10 @@ os.environ["WAN_PRECISION"] = transformer_dtype_policy
 desired_dtype = get_transformer_dtype(transformer_type, transformer_dtype_policy)
 torch._wan2gp_desired_dtype = desired_dtype
 text_encoder_quantization =server_config.get("text_encoder_quantization", "bf16")
-if isinstance(transformer_dtype_policy, str) and transformer_dtype_policy.strip().lower() in ("fp16", "fp32"):
-    if text_encoder_quantization in ("", "bf16"):
-        text_encoder_quantization = transformer_dtype_policy
+if isinstance(transformer_dtype_policy, str):
+    precision_policy = transformer_dtype_policy.strip().lower()
+    if precision_policy in ("fp16", "fp32") and text_encoder_quantization in ("", "fp16", "fp32"):
+        text_encoder_quantization = "bf16"
 attention_mode = "sdpa"
 if len(args.attention)> 0 and args.attention != "sdpa":
     print(f"Ignoring attention mode '{args.attention}': native mode enforces sdpa")
@@ -3769,21 +3770,23 @@ def load_models(model_type, override_profile = -1, output_type="video", **model_
     model_type_handler = model_types_handlers[base_model_type] 
     text_encoder_URLs= get_model_recursive_prop(model_type, "text_encoder_URLs", return_list= True)
     if text_encoder_URLs is not None:
-        text_encoder_filename = get_model_filename(model_type=model_type, quantization= text_encoder_quantization, dtype_policy = transformer_dtype_policy, URLs=text_encoder_URLs)
+        text_encoder_dtype_policy = "bf16" if transformer_dtype in (torch.float16, torch.float32) else transformer_dtype_policy
+        text_encoder_filename = get_model_filename(model_type=model_type, quantization= text_encoder_quantization, dtype_policy = text_encoder_dtype_policy, URLs=text_encoder_URLs)
     if text_encoder_filename is not None and len(text_encoder_filename):
         text_encoder_folder = model_def.get("text_encoder_folder", None)
         if text_encoder_filename is not None:
-            text_encoder_candidates = [text_encoder_filename]
+            text_encoder_candidates = []
             if transformer_dtype == torch.float16:
-                fp16_candidate = (
+                bf16_candidate = (
                     text_encoder_filename
-                    .replace("mbf16", "mfp16")
-                    .replace("-bf16", "-fp16")
-                    .replace("_bf16", "_fp16")
-                    .replace("bf16", "fp16")
+                    .replace("mfp16", "mbf16")
+                    .replace("-fp16", "-bf16")
+                    .replace("_fp16", "_bf16")
+                    .replace("fp16", "bf16")
                 )
-                if fp16_candidate != text_encoder_filename:
-                    text_encoder_candidates = [fp16_candidate, text_encoder_filename]
+                text_encoder_candidates.append(bf16_candidate)
+            text_encoder_candidates.append(text_encoder_filename)
+            text_encoder_candidates = list(dict.fromkeys(text_encoder_candidates))
             loaded_text_encoder = None
             last_error = None
             for candidate in text_encoder_candidates:
