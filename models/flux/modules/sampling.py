@@ -87,7 +87,7 @@ def encode_image_refs(ae, img_ctx: list[Image.Image]):
     ref_tokens = ref_tokens.unsqueeze(0)  # (1, total_ref_tokens, C)
     ref_ids = ref_ids.unsqueeze(0)  # (1, total_ref_tokens, 4)
 
-    return ref_tokens.to(torch.bfloat16), ref_ids
+    return ref_tokens.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16), ref_ids
 
 
 def prc_txt(x: Tensor, t_coord: Tensor | None = None) -> tuple[Tensor, Tensor]:

@@ -157,7 +157,7 @@ class FusionModel(nn.Module):
 
         latent_frames = src_e[0].shape[0]
 
-        y = attn_block.norm2(src_seq).to(torch.bfloat16)
+        y = attn_block.norm2(src_seq)
         y = reshape_latent(y , latent_frames)        
         y *= (1 + src_e[4].squeeze(2)) 
         y += src_e[3].squeeze(2)
@@ -212,7 +212,7 @@ class FusionModel(nn.Module):
         audio_e = audio_block.modulation(audio_e).chunk(6, dim=1)
 
         # audio self-attention
-        audio_y = audio_block.norm1(audio).to(torch.bfloat16)
+        audio_y = audio_block.norm1(audio)
         audio_y *= (1 + audio_e[1].squeeze(2)) 
         audio_y += audio_e[0].squeeze(2)
         audio_y = audio_block.self_attn(audio_y, audio_seq_lens, audio_grid_sizes, audio_freqs)
@@ -227,7 +227,7 @@ class FusionModel(nn.Module):
 
 
         # video self-attention
-        vid_y = vid_block.norm1(vid).to(torch.bfloat16)
+        vid_y = vid_block.norm1(vid)
         vid_y = reshape_latent(vid_y , latent_frames)        
         vid_y *= (1 + vid_e[1].squeeze(2)) 
         vid_y += vid_e[0].squeeze(2)

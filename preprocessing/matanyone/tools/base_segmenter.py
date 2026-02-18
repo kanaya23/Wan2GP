@@ -77,7 +77,7 @@ def _patched_forward(self, x: torch.Tensor) -> torch.Tensor:
         del q, k, v, attn_mask
         x = x.view(B, self.num_heads, H, W, -1).permute(0, 2, 3, 1, 4).reshape(B, H, W, -1)
         if not _bfloat16_supported:
-            x = x.to(torch.bfloat16)
+            x = x.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
 
         return self.proj(x)
 

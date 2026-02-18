@@ -1108,19 +1108,19 @@ class HunyuanVideoAudioPipeline(DiffusionPipeline):
         else:
             latent_dtype = torch.bfloat16
         if prompt_embeds != None:
-            prompt_embeds = prompt_embeds.to(torch.bfloat16)
+            prompt_embeds = prompt_embeds.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         if negative_prompt_embeds != None:
-            negative_prompt_embeds = negative_prompt_embeds.to(torch.bfloat16)
+            negative_prompt_embeds = negative_prompt_embeds.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         if prompt_embeds_2 != None:
-            prompt_embeds_2 = prompt_embeds_2.to(torch.bfloat16)
+            prompt_embeds_2 = prompt_embeds_2.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         if negative_prompt_embeds_2 != None:
-            negative_prompt_embeds_2 = negative_prompt_embeds_2.to(torch.bfloat16)
+            negative_prompt_embeds_2 = negative_prompt_embeds_2.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         if audio_prompts != None:
-            audio_prompts = audio_prompts.to(torch.bfloat16)
+            audio_prompts = audio_prompts.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         if face_masks!= None:
-            face_masks = face_masks.to(torch.bfloat16)
+            face_masks = face_masks.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         if ref_latents != None:
-            ref_latents = ref_latents.to(torch.bfloat16)
+            ref_latents = ref_latents.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
@@ -1375,7 +1375,7 @@ class HunyuanVideoAudioPipeline(DiffusionPipeline):
                     latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
                     noise_pred = None
 
-                    latents = latents.to(torch.bfloat16)
+                    latents = latents.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
                     for iii in range(frames_per_batch):
                         p = (index_start + iii) % pred_latents.shape[2]
                         pred_latents[:, :, p] += latents[:, :, iii]

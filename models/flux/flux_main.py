@@ -319,7 +319,7 @@ class model_factory:
                 generator = torch.Generator(device="cuda").manual_seed(seed)
                 randn = torch.randn(shape, generator=generator, dtype=torch.bfloat16, device="cuda")
                 img, img_ids = batched_prc_img(randn)                
-                encode_fn = lambda prompts: list(zip(*batched_prc_txt(self.mistral(prompts).to(torch.bfloat16))))
+                encode_fn = lambda prompts: list(zip(*batched_prc_txt(self.mistral(prompts).to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16))))
                 txt_embeds, txt_ids = self.text_encoder_cache.encode(encode_fn, [input_prompt], device=self.device)[0]
                 if NAG is not None:
                     neg_embeds, neg_ids = self.text_encoder_cache.encode(encode_fn, [n_prompt], device=self.device)[0]

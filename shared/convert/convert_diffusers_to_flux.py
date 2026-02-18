@@ -846,7 +846,7 @@ def main():
     else:
         # Default: save in bfloat16
         for k in list(orig.keys()):
-            orig[k] = orig[k].to(torch.bfloat16).cpu()
+            orig[k] = orig[k].to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16).cpu()
 
     out_path = Path(args.output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

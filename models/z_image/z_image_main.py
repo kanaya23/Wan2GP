@@ -125,7 +125,7 @@ class model_factory:
         # Text encoder
 
         # text_encoder = Qwen3ForCausalLM.from_pretrained(os.path.dirname(text_encoder_filename), trust_remote_code=True)
-        # text_encoder.to(torch.bfloat16)
+        # text_encoder.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         # offload.save_model(text_encoder, "c:/temp/qwnen3_bf16_.safetensors")
         
         text_encoder = offload.fast_load_transformers_model( text_encoder_filename, writable_tensors=True, modelClass=Qwen3ForCausalLM,)

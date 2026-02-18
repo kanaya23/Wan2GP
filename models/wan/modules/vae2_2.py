@@ -1020,7 +1020,7 @@ def _video_vae(pretrained_path=None, z_dim=16, dim=160, device="cpu", **kwargs):
     # model.load_state_dict(
     #     torch.load(pretrained_path, map_location=device), assign=True)
     # offload.save_model(model, "Wan_vae_2_2.safetensors")
-    # model.to(torch.bfloat16)
+    # model.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
     # offload.save_model(model, "Wan_vae_2_2_bf16.safetensors")
     offload.load_model_data(model, pretrained_path.replace(".pth", ".safetensors"), writable_tensors= False)    
 

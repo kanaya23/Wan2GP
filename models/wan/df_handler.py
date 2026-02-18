@@ -18,6 +18,7 @@ class family_handler():
         text_encoder_folder = "umt5-xxl"
         extra_model_def["text_encoder_URLs"] = [
             build_hf_url("DeepBeepMeep/Wan2.1", text_encoder_folder, "models_t5_umt5-xxl-enc-bf16.safetensors"),
+            build_hf_url("DeepBeepMeep/Wan2.1", text_encoder_folder, "models_t5_umt5-xxl-enc-fp16.safetensors"),
             build_hf_url("DeepBeepMeep/Wan2.1", text_encoder_folder, "models_t5_umt5-xxl-enc-quanto_int8.safetensors"),
         ]
         extra_model_def["text_encoder_folder"] = text_encoder_folder

@@ -13,17 +13,17 @@ from .attention import SelfAttentionEngine
 
 @torch.autocast(device_type="cuda", dtype=torch.float32)
 def apply_scale_shift_norm(norm, x, scale, shift):
-    return (norm(x) * (scale + 1.0) + shift).to(torch.bfloat16)
+    return (norm(x) * (scale + 1.0) + shift).to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
 
 @torch.autocast(device_type="cuda", dtype=torch.float32)
 def apply_gate_sum(x, out, gate):
-    return (x + gate * out).to(torch.bfloat16)
+    return (x + gate * out).to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
 
 @torch.autocast(device_type="cuda", enabled=False)
 def apply_rotary(x, rope):
     x_ = x.reshape(*x.shape[:-1], -1, 1, 2).to(torch.float32)
     x_out = (rope * x_).sum(dim=-1)
-    return x_out.reshape(*x.shape).to(torch.bfloat16)
+    return x_out.reshape(*x.shape).to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
 
 @torch.autocast(device_type="cuda", enabled=False)
 def apply_rotary_inplace(x_list, rope):

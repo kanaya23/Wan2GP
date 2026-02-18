@@ -2,6 +2,7 @@
 # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
 import logging
 import math
+import os
 
 import torch
 import torch.nn as nn
@@ -523,7 +524,23 @@ class CLIPModel:
         # self.model.load_state_dict(
         #     torch.load(checkpoint_path, map_location='cpu'), assign= True)
 
-        offload.load_model_data(self.model, checkpoint_path.replace(".pth", "-bf16.safetensors"), writable_tensors= False)
+        weights_checkpoint_path = checkpoint_path.replace(".pth", "-bf16.safetensors")
+        if dtype in (torch.float16, torch.float32):
+            target_tag = "fp16" if dtype == torch.float16 else "fp32"
+            candidate_path = (
+                weights_checkpoint_path
+                .replace("mbf16", f"m{target_tag}")
+                .replace("-bf16", f"-{target_tag}")
+                .replace("_bf16", f"_{target_tag}")
+                .replace("bf16", target_tag)
+            )
+            if os.path.isfile(candidate_path):
+                weights_checkpoint_path = candidate_path
+            else:
+                logging.info(
+                    f"Requested {target_tag} CLIP weights not found at '{candidate_path}', falling back to '{weights_checkpoint_path}'"
+                )
+        offload.load_model_data(self.model, weights_checkpoint_path, writable_tensors= False)
 
         # init tokenizer
         self.tokenizer = HuggingfaceTokenizer(
@@ -544,6 +561,9 @@ class CLIPModel:
         videos = self.transforms.transforms[-1](videos.mul_(0.5).add_(0.5))
 
         # forward
-        with torch.amp.autocast(dtype=self.dtype, device_type="cuda"):
-            out = self.model.visual(videos.to(torch.bfloat16), use_31_block=True)
+        autocast_enabled = self.dtype in (torch.float16, torch.bfloat16)
+        autocast_dtype = self.dtype if autocast_enabled else torch.float16
+        videos = videos.to(self.dtype)
+        with torch.amp.autocast(dtype=autocast_dtype, device_type="cuda", enabled=autocast_enabled):
+            out = self.model.visual(videos, use_31_block=True)
             return out

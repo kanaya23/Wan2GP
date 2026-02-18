@@ -143,7 +143,7 @@ def load_gguf_state_dict(
             if torch_tensor.dtype in (torch.uint8, torch.uint16):
                 torch_tensor = torch_tensor.view(torch.bfloat16)
             elif torch_tensor.dtype != torch.bfloat16:
-                torch_tensor = torch_tensor.to(torch.bfloat16)
+                torch_tensor = torch_tensor.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         elif tensor_type == gguf.GGMLQuantizationType.F32:
             if torch_tensor.dtype in (torch.uint8, torch.uint16, torch.uint32):
                 torch_tensor = torch_tensor.view(torch.float32)

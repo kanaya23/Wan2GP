@@ -1466,9 +1466,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         else:
             latent_dtype = torch.bfloat16
         if prompt_embeds != None:
-            prompt_embeds = prompt_embeds.to(torch.bfloat16)
+            prompt_embeds = prompt_embeds.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         if prompt_embeds_2 != None:
-            prompt_embeds_2 = prompt_embeds_2.to(torch.bfloat16)
+            prompt_embeds_2 = prompt_embeds_2.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
 
         if self.upsampler is not None:
             # lq_latents = rearrange(bg_latents, "b c f h w -> (b f) c h w")

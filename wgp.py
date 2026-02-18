@@ -2054,6 +2054,14 @@ def _parse_args():
     )
 
     parser.add_argument(
+        "--precision",
+        type=str,
+        choices=["fp16", "bf16", "fp32"],
+        default="fp16",
+        help="Unified precision for model load/inference"
+    )
+
+    parser.add_argument(
         "--fp16",
         action="store_true",
         help="For using fp16 transformer model"
@@ -2254,6 +2262,16 @@ def get_lora_dir(model_type):
 attention_modes_installed = get_attention_modes()
 attention_modes_supported = get_supported_attention_modes()
 args = _parse_args()
+if isinstance(args.precision, str):
+    args.precision = args.precision.strip().lower()
+if args.fp16:
+    args.precision = "fp16"
+if args.bf16:
+    args.precision = "bf16"
+if args.precision not in ("fp16", "bf16", "fp32"):
+    args.precision = "fp16"
+os.environ["WAN_PRECISION"] = args.precision
+torch._wan2gp_desired_dtype = torch.float16 if args.precision == "fp16" else torch.bfloat16 if args.precision == "bf16" else torch.float32
 migrate_loras_layout()
 
 gpu_major, gpu_minor = torch.cuda.get_device_capability(args.gpu if len(args.gpu) > 0 else None)
@@ -2713,6 +2731,14 @@ def get_model_filename(model_type, quantization ="int8", dtype_policy = "", modu
         quantization = "bf16"
 
     dtype = get_transformer_dtype(model_type, dtype_policy)
+    if dtype == torch.float16:
+        dtype_tokens = ("fp16",)
+    elif dtype == torch.bfloat16:
+        dtype_tokens = ("mbf16", "bf16")
+    elif dtype == torch.float32:
+        dtype_tokens = ("fp32", "float32")
+    else:
+        dtype_tokens = ()
     if len(choices) <= 1:
         raw_filename = choices[0]
     else:
@@ -2732,24 +2758,31 @@ def get_model_filename(model_type, quantization ="int8", dtype_policy = "", modu
             sub_choices += [name for name in choices if token in os.path.basename(name).lower()]
 
         if len(sub_choices) > 0:
-            dtype_str = "fp16" if dtype == torch.float16 else "bf16"
-            new_sub_choices = [ name for name in sub_choices if dtype_str in os.path.basename(name) or dtype_str.upper() in os.path.basename(name)]
+            new_sub_choices = [name for name in sub_choices if any(token in os.path.basename(name).lower() for token in dtype_tokens)]
             sub_choices = new_sub_choices if len(new_sub_choices) > 0 else sub_choices
             raw_filename = sub_choices[0]
         else:
-            raw_filename = choices[0]
+            dtype_choices = [name for name in choices if any(token in os.path.basename(name).lower() for token in dtype_tokens)]
+            raw_filename = dtype_choices[0] if len(dtype_choices) > 0 else choices[0]
 
     return raw_filename
 
 def get_transformer_dtype(model_type, transformer_dtype_policy):
     base_model_type = get_base_model_type(model_type)
     model_def = get_model_def(base_model_type)
-    dtype = model_def.get("dtype", None)
-    if dtype is not None: 
-        return torch.float16 if dtype =="fp16" else torch.bfloat16
-    model_family =  get_model_family(base_model_type) 
     if not isinstance(transformer_dtype_policy, str):
         return transformer_dtype_policy
+    transformer_dtype_policy = transformer_dtype_policy.strip().lower()
+    if transformer_dtype_policy == "fp16":
+        return torch.float16
+    if transformer_dtype_policy == "bf16":
+        return torch.bfloat16
+    if transformer_dtype_policy == "fp32":
+        return torch.float32
+    dtype = model_def.get("dtype", None)
+    if dtype is not None: 
+        return torch.float16 if dtype =="fp16" else torch.float32 if dtype =="fp32" else torch.bfloat16
+    model_family =  get_model_family(base_model_type) 
     if len(transformer_dtype_policy) == 0:
         if not bfloat16_supported:
             return torch.float16
@@ -2758,11 +2791,7 @@ def get_transformer_dtype(model_type, transformer_dtype_policy):
                 return torch.float16
             else: 
                 return torch.bfloat16
-        return transformer_dtype
-    elif transformer_dtype_policy =="fp16":
-        return torch.float16
-    else:
-        return torch.bfloat16
+    return torch.bfloat16
 
 def get_settings_file_name(model_type):
     return  os.path.join(args.settings, model_type + "_settings.json")
@@ -2980,12 +3009,30 @@ if transformer_type == None:
 
 transformer_quantization =server_config.get("transformer_quantization", "bf16")
 
-transformer_dtype_policy = server_config.get("transformer_dtype_policy", "")
+transformer_dtype_policy = str(server_config.get("precision", server_config.get("transformer_dtype_policy", args.precision))).strip().lower()
+force_fp16_env = str(os.environ.get("WAN_FORCE_FP16", "")).strip().lower() in {"1", "true", "yes", "on"}
+if force_fp16_env:
+    transformer_dtype_policy = "fp16"
+if len(args.precision) > 0:
+    transformer_dtype_policy = args.precision
 if args.fp16:
     transformer_dtype_policy = "fp16" 
 if args.bf16:
     transformer_dtype_policy = "bf16" 
+if transformer_dtype_policy not in ("fp16", "bf16", "fp32"):
+    transformer_dtype_policy = "fp16"
+if transformer_dtype_policy == "bf16" and not bfloat16_supported:
+    print("BF16 requested but unsupported on this GPU; switching to FP16")
+    transformer_dtype_policy = "fp16"
+server_config["precision"] = transformer_dtype_policy
+server_config["transformer_dtype_policy"] = transformer_dtype_policy
+os.environ["WAN_PRECISION"] = transformer_dtype_policy
+desired_dtype = get_transformer_dtype(transformer_type, transformer_dtype_policy)
+torch._wan2gp_desired_dtype = desired_dtype
 text_encoder_quantization =server_config.get("text_encoder_quantization", "bf16")
+if isinstance(transformer_dtype_policy, str) and transformer_dtype_policy.strip().lower() in ("fp16", "fp32"):
+    if text_encoder_quantization in ("", "bf16"):
+        text_encoder_quantization = transformer_dtype_policy
 attention_mode = "sdpa"
 if len(args.attention)> 0 and args.attention != "sdpa":
     print(f"Ignoring attention mode '{args.attention}': native mode enforces sdpa")
@@ -3667,6 +3714,7 @@ def load_models(model_type, override_profile = -1, output_type="video", **model_
     quantizeTransformer = False
     model_family = get_model_family(model_type)
     transformer_dtype = get_transformer_dtype(model_type, transformer_dtype_policy)
+    torch._wan2gp_desired_dtype = transformer_dtype
     if quantizeTransformer or "quanto" in model_filename:
         transformer_dtype = torch.bfloat16 if "bf16" in model_filename or "BF16" in model_filename else transformer_dtype
         transformer_dtype = torch.float16 if "fp16" in model_filename or"FP16" in model_filename else transformer_dtype
@@ -3725,8 +3773,33 @@ def load_models(model_type, override_profile = -1, output_type="video", **model_
     if text_encoder_filename is not None and len(text_encoder_filename):
         text_encoder_folder = model_def.get("text_encoder_folder", None)
         if text_encoder_filename is not None:
-            download_models(text_encoder_filename, file_model_type, 2, -1, force_path =text_encoder_folder)
-            text_encoder_filename =  get_local_model_filename(text_encoder_filename, extra_paths=text_encoder_folder)
+            text_encoder_candidates = [text_encoder_filename]
+            if transformer_dtype == torch.float16:
+                fp16_candidate = (
+                    text_encoder_filename
+                    .replace("mbf16", "mfp16")
+                    .replace("-bf16", "-fp16")
+                    .replace("_bf16", "_fp16")
+                    .replace("bf16", "fp16")
+                )
+                if fp16_candidate != text_encoder_filename:
+                    text_encoder_candidates = [fp16_candidate, text_encoder_filename]
+            loaded_text_encoder = None
+            last_error = None
+            for candidate in text_encoder_candidates:
+                try:
+                    download_models(candidate, model_type, 2, -1, force_path=text_encoder_folder)
+                    loaded_text_encoder = get_local_model_filename(candidate, extra_paths=text_encoder_folder)
+                    if loaded_text_encoder is not None:
+                        break
+                except Exception as e:
+                    last_error = e
+                    print(f"Unable to load text encoder candidate '{candidate}': {e}")
+            if loaded_text_encoder is None:
+                if last_error is not None:
+                    raise last_error
+                raise Exception("Unable to resolve text encoder file for selected precision")
+            text_encoder_filename = loaded_text_encoder
             print(f"Loading Text Encoder '{text_encoder_filename}' ...")
 
     if base_model_type == "i2v_2_2":
@@ -3735,7 +3808,7 @@ def load_models(model_type, override_profile = -1, output_type="video", **model_
             resolved_model_files.append(os.path.basename(text_encoder_filename))
         quantized_files = [name for name in resolved_model_files if "quanto" in name.lower() and "int8" in name.lower()]
         if len(quantized_files) > 0:
-            raise Exception(f"Native mode requires BF16 non-quantized files for i2v_2_2, but got: {quantized_files}")
+            raise Exception(f"Native mode requires non-quantized full-precision files for i2v_2_2, but got: {quantized_files}")
         print(f"Native mode resolved files for {model_type}: {resolved_model_files}")
 
 

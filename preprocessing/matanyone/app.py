@@ -751,7 +751,7 @@ def load_unload_models(state = None, selected = True, force = False):
                     bfloat16_supported = True
 
                 model = MaskGenerator(sam_checkpoint, "cpu")
-                model.samcontroler.sam_controler.model.to("cpu").to(torch.bfloat16).to(arg_device)
+                model.samcontroler.sam_controler.model.to("cpu").to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16).to(arg_device)
                 model_in_GPU = True
                 from .matanyone.model.matanyone import MatAnyone
                 # matanyone_model = MatAnyone.from_pretrained("PeiqingYang/MatAnyone")

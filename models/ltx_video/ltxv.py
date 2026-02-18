@@ -211,7 +211,7 @@ class LTXV:
         # text_encoder = T5EncoderModel.from_pretrained(
         #     "PixArt-alpha/PixArt-XL-2-1024-MS", subfolder="text_encoder"
         # )
-        # text_encoder.to(torch.bfloat16)
+        # text_encoder.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         # offload.save_model(text_encoder, "T5_xxl_1.1_enc_bf16.safetensors", config_file_path="T5_config.json")
         # offload.save_model(text_encoder, "T5_xxl_1.1_enc_quanto_bf16_int8.safetensors", do_quantize= True, config_file_path="T5_config.json")
 

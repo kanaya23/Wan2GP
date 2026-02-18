@@ -110,7 +110,7 @@ def prepare_redux(
     with torch.no_grad():
         img_cond = encoder(img_cond)
 
-    img_cond = img_cond.to(torch.bfloat16)
+    img_cond = img_cond.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
     if img_cond.shape[0] == 1 and bs > 1:
         img_cond = repeat(img_cond, "1 ... -> bs ...", bs=bs)
 
@@ -210,7 +210,7 @@ def prepare_kontext(
         with torch.no_grad():
             img_cond_latents = ae.encode(img_cond.to(device))
 
-        img_cond_latents = img_cond_latents.to(torch.bfloat16)
+        img_cond_latents = img_cond_latents.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         img_cond_latents = rearrange(img_cond_latents, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
         if img_cond.shape[0] == 1 and bs > 1:
             img_cond_latents = repeat(img_cond_latents, "1 ... -> bs ...", bs=bs)
@@ -842,7 +842,7 @@ def prepare_multi_ip(
             (TVF.to_tensor(ref_img) * 2.0 - 1.0)
             .unsqueeze(0)
             .to(device, torch.float32)
-        ).to(torch.bfloat16)
+        ).to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         for ref_img in img_cond_list
     ]
 

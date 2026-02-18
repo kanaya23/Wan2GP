@@ -430,7 +430,7 @@ def _nvfp4_linear_cuda_lightx2v(input, weight, bias=None):
         alpha = alpha.to(torch.float32)
     if bias is not None and torch.is_tensor(bias):
         if bias.dtype != torch.bfloat16:
-            bias = bias.to(torch.bfloat16)
+            bias = bias.to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         if not bias.is_contiguous():
             bias = bias.contiguous()
     if layout == _NVFP4_LAYOUT_TENSORCORE:

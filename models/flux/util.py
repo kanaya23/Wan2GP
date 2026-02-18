@@ -1011,9 +1011,9 @@ def load_flow_model(
 
     with torch.device("meta"):
         if config.lora_repo_id is not None and config.lora_filename is not None:
-            model = FluxLoraWrapper(params=config.params).to(torch.bfloat16)
+            model = FluxLoraWrapper(params=config.params).to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
         else:
-            model = Flux(config.params).to(torch.bfloat16)
+            model = Flux(config.params).to(torch._wan2gp_desired_dtype if hasattr(torch, "_wan2gp_desired_dtype") else torch.bfloat16)
 
     # print(f"Loading checkpoint: {ckpt_path}")
     from mmgp import offload

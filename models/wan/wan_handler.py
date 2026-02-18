@@ -191,6 +191,7 @@ class family_handler():
         text_encoder_folder = "umt5-xxl"
         extra_model_def["text_encoder_URLs"] = [
             build_hf_url("DeepBeepMeep/Wan2.1", text_encoder_folder, "models_t5_umt5-xxl-enc-bf16.safetensors"),
+            build_hf_url("DeepBeepMeep/Wan2.1", text_encoder_folder, "models_t5_umt5-xxl-enc-fp16.safetensors"),
             build_hf_url("DeepBeepMeep/Wan2.1", text_encoder_folder, "models_t5_umt5-xxl-enc-quanto_int8.safetensors"),
         ]
         extra_model_def["text_encoder_folder"] = text_encoder_folder
@@ -759,6 +760,12 @@ class family_handler():
         else:
             cfg = WAN_CONFIGS['t2v-14B']
             # cfg = WAN_CONFIGS['t2v-1.3B']    
+        if hasattr(cfg, "param_dtype"):
+            cfg.param_dtype = dtype
+        if hasattr(cfg, "t5_dtype"):
+            cfg.t5_dtype = dtype
+        if hasattr(cfg, "clip_dtype"):
+            cfg.clip_dtype = dtype
         from . import WanAny2V
         wan_model = WanAny2V(
             config=cfg,
